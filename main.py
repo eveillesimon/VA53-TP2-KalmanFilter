@@ -1,7 +1,6 @@
 import os.path
 
 import numpy as np
-from sympy import pprint
 from ultralytics import YOLO
 import cv2
 import math
@@ -27,8 +26,7 @@ classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "trai
               "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
               "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
               "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
-              "teddy bear", "hair drier", "toothbrush"
-              ]
+              "teddy bear", "hair drier", "toothbrush"]
 
 timestamps = []
 positions_measured = []
@@ -38,13 +36,14 @@ positions_corrected = []
 kalman_filter = None
 kalman_initialized = False
 
+image_size = None
+
 success = True
 while success:
     success, img = cap.read()
 
-
     if success:
-        results = model(img, stream=True)
+        results = model(img, stream=True, verbose=False)
         already_seen = False
         # coordinates
         for r in results:
@@ -60,11 +59,11 @@ while success:
 
                 # confidence
                 confidence = math.ceil((box.conf[0]*100))/100
-                print("Confidence --->",confidence)
+                #print("Confidence --->",confidence)
 
                 # class name
                 cls = int(box.cls[0])
-                print("Class name -->", classNames[cls])
+                #print("Class name -->", classNames[cls])
 
                 # Detect the person
                 if classNames[cls] == "person" and not already_seen:
@@ -80,16 +79,16 @@ while success:
                 fontScale = 1
                 color = (255, 0, 0)
                 thickness = 2
-
                 cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
 
         # Kalman filter Initilization (use first 2 loops to make a first estimation of speed)
         if kalman_filter is None:
+            image_size = img.shape
             kalman_filter = WalkingPedestrianKalmanFilter(
                 1/cap.get(cv2.CAP_PROP_FPS),
-                5,
-                15,
-                0.95
+                20,
+                20,
+                0.999
             )
 
         elif not kalman_initialized and len(positions_measured) >= 2 :
@@ -140,18 +139,20 @@ cv2.destroyAllWindows()
 positions_measured = np.array(positions_measured)
 X_measured = positions_measured[:, 0]
 Y_measured = positions_measured[:, 1]
-plt.plot(X_measured, Y_measured)
+line1 = plt.plot(X_measured, Y_measured, "-r", label="Position measured by YOLO model")
 
 positions_predicted = np.array(positions_predicted)
 X_predicted = positions_predicted[5:, 0]
 Y_predicted = positions_predicted[5:, 1]
-plt.plot(X_predicted, Y_predicted)
+line2 = plt.plot(X_predicted, Y_predicted, "-b",label="Position predicted by the Kalman Filter")
+plt.legend(loc="upper left")
 
+plt.suptitle("Trajectory of the pedestrian in the camera view")
 ax = plt.gca()
-ax.set_xlim([0, 900])
-ax.set_ylim([0, 500])
+#ax.set_xlim([0, image_size[1]])
+#ax.set_ylim([0, image_size[0]])
 
-save_path = "out/trajectory_measured.png"
+save_path = "out/trajectory_measured_etiree_verticalement.png"
 if os.path.exists(save_path):
     os.remove(save_path)
-plt.savefig(save_path)
+plt.savefig(save_path, dpi=300.0)
